@@ -435,7 +435,7 @@ body { font-family: 'Manrope', sans-serif; background: #f9faf8; color: #191c1b; 
     <div class="bottom-input">
       <div class="bi-row">
         <input type="text" class="tinput" id="word-input" placeholder="예) 병원 사과 전화…" onkeydown="if(event.key==='Enter')addWord()">
-        <button class="btn btn-dark" onclick="addWord()">추가</button>
+        <button class="btn btn-dark" id="add-btn" onclick="addWord()">추가</button>
       </div>
       <div class="upload-zone" id="upload-zone"
         onclick="document.getElementById('xl-input').click()"
@@ -763,6 +763,8 @@ async function addWord(){
   const raw=inp.value.trim(); if(!raw)return;
   const inputs=raw.split(/[,，、\s]+/).map(w=>w.trim()).filter(Boolean);
   inp.value="";
+  const btn=document.getElementById("add-btn");
+  if(btn){btn.disabled=true;btn.textContent="분류 중…";}
   for(const input of inputs){
     if(!input)continue;
     const r=lookupInput(input);
@@ -784,6 +786,7 @@ async function addWord(){
     }
     ST.words.push({kr:r.kr, jp:r.jp, diff:r.diff, fromDB:r.fromDB});
   }
+  if(btn){btn.disabled=false;btn.textContent="추가";}
   renderKanban(); updateStatus(); autoSave();
 }
 
