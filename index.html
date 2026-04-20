@@ -771,7 +771,9 @@ async function addWord(){
     // DB에 없는 단어 → Gemini 자동 분류
     if(!r.fromDB && (r.jp||r.kr)){
       try{
-        const res=await fetch('/api/classify',{
+        const apiBase = window.location.hostname.includes('vercel.app')
+          ? '' : 'https://japanese-assessment.vercel.app';
+        const res=await fetch(apiBase+'/api/classify',{
           method:'POST',
           headers:{'Content-Type':'application/json'},
           body:JSON.stringify({word:r.jp||r.kr})
@@ -788,10 +790,11 @@ async function addWord(){
 function handleXlFile(file){
   if(!file)return;
   const reader=new FileReader();
-  reader.onload=ev=>{
+  reader.onload=async ev=>{
     const wb=XLSX.read(ev.target.result,{type:"binary"});
     const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1});
-    // 모든 셀을 순회하며 단어 추출 (열 위치 무관)
+    // 모든 셀을 순회하며 단어 추출
+    const allWords=[];
     rows.forEach(row=>{
       if(!Array.isArray(row))return;
       row.forEach(val=>{
@@ -800,10 +803,21 @@ function handleXlFile(file){
         if(!input||["A","B","C","상","중","하"].includes(input))return;
         const r=lookupInput(input);
         if(ST.words.find(w=>w.kr===r.kr&&r.kr))return;
-        // DB에 있으면 DB 난이도 사용, 없으면 미분류
-        ST.words.push({kr:r.kr, jp:r.jp, diff:r.diff, fromDB:r.fromDB});
+        allWords.push(r);
       });
     });
+    // DB에 없는 단어 → Gemini 자동 분류
+    const apiBase2=window.location.hostname.includes('vercel.app')?'':'https://japanese-assessment.vercel.app';
+    for(const r of allWords){
+      if(!r.fromDB&&(r.jp||r.kr)){
+        try{
+          const res=await fetch(apiBase2+'/api/classify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({word:r.jp||r.kr})});
+          const data=await res.json();
+          if(data.difficulty)r.diff=data.difficulty;
+        }catch(e){console.log('Gemini xl 분류 실패',e);}
+      }
+      ST.words.push({kr:r.kr,jp:r.jp,diff:r.diff,fromDB:r.fromDB});
+    }
     renderKanban(); updateStatus(); autoSave();
   };
   reader.readAsBinaryString(file);
