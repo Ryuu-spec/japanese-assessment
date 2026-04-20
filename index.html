@@ -781,8 +781,10 @@ async function addWord(){
           body:JSON.stringify({word:r.jp||r.kr})
         });
         const data=await res.json();
+        console.log('Gemini 응답:', JSON.stringify(data));
         if(data.difficulty) r.diff=data.difficulty;
-      }catch(e){console.log('Gemini 분류 실패',e);}
+        else console.log('difficulty 없음:', data);
+      }catch(e){console.error('Gemini 분류 실패',e);}
     }
     ST.words.push({kr:r.kr, jp:r.jp, diff:r.diff, fromDB:r.fromDB});
   }
