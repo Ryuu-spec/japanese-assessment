@@ -14,7 +14,7 @@ export default async function handler(req, res) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            contents: [{ parts: [{ text }] }],
+            contents: [{ parts: [{ text: `日本語のネイティブスピーカーとして、自然な日本語の発音で読んでください: ${text}` }] }],
             generationConfig: {
               responseModalities: ['audio'],
               speechConfig: {
