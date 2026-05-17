@@ -4,70 +4,65 @@ export default async function handler(req, res) {
   const { text } = req.body;
   if (!text) return res.status(400).json({ error: 'text required' });
 
-  try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${process.env.GEMINI_API_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text }] }],
-          generationConfig: {
-            responseModalities: ['audio'],
-            speechConfig: {
-              voiceConfig: {
-                prebuiltVoiceConfig: { voiceName: 'Aoede' }
+  const MAX_RETRIES = 3;
+
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${process.env.GEMINI_API_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text }] }],
+            generationConfig: {
+              responseModalities: ['audio'],
+              speechConfig: {
+                voiceConfig: {
+                  prebuiltVoiceConfig: { voiceName: 'Aoede' }
+                }
               }
             }
-          }
-        })
+          })
+        }
+      );
+
+      const data = await response.json();
+      const part = data?.candidates?.[0]?.content?.parts?.[0];
+      const audioData = part?.inlineData?.data;
+
+      if (!audioData) {
+        console.warn(`TTS 시도 ${attempt}/${MAX_RETRIES} 실패: 오디오 없음`);
+        if (attempt === MAX_RETRIES) return res.status(500).json({ error: 'TTS 생성 실패' });
+        await new Promise(r => setTimeout(r, 300 * attempt));
+        continue;
       }
-    );
 
-    const data = await response.json();
+      // PCM → WAV (24000Hz, mono, 16bit)
+      const pcm = Buffer.from(audioData, 'base64');
+      const header = Buffer.alloc(44);
+      const sampleRate = 24000, numChannels = 1, bitsPerSample = 16;
+      header.write('RIFF', 0);
+      header.writeUInt32LE(36 + pcm.length, 4);
+      header.write('WAVE', 8);
+      header.write('fmt ', 12);
+      header.writeUInt32LE(16, 16);
+      header.writeUInt16LE(1, 20);
+      header.writeUInt16LE(numChannels, 22);
+      header.writeUInt32LE(sampleRate, 24);
+      header.writeUInt32LE(sampleRate * numChannels * bitsPerSample / 8, 28);
+      header.writeUInt16LE(numChannels * bitsPerSample / 8, 32);
+      header.writeUInt16LE(bitsPerSample, 34);
+      header.write('data', 36);
+      header.writeUInt32LE(pcm.length, 40);
 
-    // 오디오 데이터 추출
-    const part = data?.candidates?.[0]?.content?.parts?.[0];
-    const audioData = part?.inlineData?.data;
-    const mimeType = part?.inlineData?.mimeType || 'audio/wav';
+      res.setHeader('Content-Type', 'audio/wav');
+      return res.send(Buffer.concat([header, pcm]));
 
-    if (!audioData) {
-      console.error('TTS 오디오 없음:', JSON.stringify(data));
-      return res.status(500).json({ error: 'TTS 생성 실패', detail: JSON.stringify(data) });
+    } catch (e) {
+      console.error(`TTS 시도 ${attempt}/${MAX_RETRIES} 오류:`, e.message);
+      if (attempt === MAX_RETRIES) return res.status(500).json({ error: e.message });
+      await new Promise(r => setTimeout(r, 300 * attempt));
     }
-
-    const pcmBuffer = Buffer.from(audioData, 'base64');
-
-    // WAV 헤더 생성 (PCM 16bit, 24000Hz, mono)
-    const sampleRate = 24000;
-    const numChannels = 1;
-    const bitsPerSample = 16;
-    const byteRate = sampleRate * numChannels * bitsPerSample / 8;
-    const blockAlign = numChannels * bitsPerSample / 8;
-    const dataSize = pcmBuffer.length;
-    const wavHeader = Buffer.alloc(44);
-
-    wavHeader.write('RIFF', 0);
-    wavHeader.writeUInt32LE(36 + dataSize, 4);
-    wavHeader.write('WAVE', 8);
-    wavHeader.write('fmt ', 12);
-    wavHeader.writeUInt32LE(16, 16);
-    wavHeader.writeUInt16LE(1, 20);
-    wavHeader.writeUInt16LE(numChannels, 22);
-    wavHeader.writeUInt32LE(sampleRate, 24);
-    wavHeader.writeUInt32LE(byteRate, 28);
-    wavHeader.writeUInt16LE(blockAlign, 32);
-    wavHeader.writeUInt16LE(bitsPerSample, 34);
-    wavHeader.write('data', 36);
-    wavHeader.writeUInt32LE(dataSize, 40);
-
-    const wavBuffer = Buffer.concat([wavHeader, pcmBuffer]);
-
-    res.setHeader('Content-Type', 'audio/wav');
-    res.send(wavBuffer);
-
-  } catch (e) {
-    console.error('TTS 오류:', e);
-    res.status(500).json({ error: e.message });
   }
 }
