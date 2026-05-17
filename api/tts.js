@@ -13,7 +13,7 @@ export default async function handler(req, res) {
         body: JSON.stringify({
           contents: [{ parts: [{ text }] }],
           generationConfig: {
-            responseModalities: ['AUDIO'],
+            responseModalities: ['audio'],
             speechConfig: {
               voiceConfig: {
                 prebuiltVoiceConfig: { voiceName: 'Aoede' }
