@@ -120,16 +120,6 @@ body { font-family: 'Manrope', sans-serif; background: #f9faf8; color: #191c1b; 
 .kana { font-family: 'Klee One', serif; font-size: 3rem; color: #325c26; }
 .lbl { font-size: 1rem; font-weight: 700; }
 .sub { font-size: .7rem; color: #73796d; letter-spacing: 1px; }
-#screen-tool.active { display: block !important; }
-.play-icon { font-size: clamp(2rem,4vw,3.2rem); display: flex; align-items: center; justify-content: center; }
-.play-icon.playing { animation: pulse .6s ease-in-out infinite alternate; }
-@keyframes pulse { from{transform:scale(1)} to{transform:scale(1.2)} }
-.btn-play-mode { font-size: .9rem; padding: 8px 16px; border-radius: 10px; border: 2px solid #325c26; font-family: inherit; font-weight: 700; cursor: pointer; transition: all .15s; white-space: nowrap; }
-.btn-play-mode.off { background: #fff; color: #325c26; }
-.btn-play-mode.off:hover { background: #bff0aa; }
-.btn-play-mode.on { background: #325c26; color: #fff; }
-.click-here-btn { display: block; margin: 0 auto; padding: 14px 64px; border: none; border-radius: 14px; background: #bff0aa; color: #022100; font-size: 1.1rem; font-weight: 700; font-family: inherit; cursor: pointer; box-shadow: 0 4px 16px rgba(0,0,0,.10); transition: background .15s; flex-shrink: 0; }
-.click-here-btn:hover { background: #a3d390; }
 #screen-tool{background:#f7f4ed;height:100vh;overflow:hidden;}
 #screen-tool.active{display:flex !important;flex-direction:column;height:100vh;}
 #screen-tool .hdr{background:#4f7e35;color:#fff;padding:0 20px;height:52px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:200;border-bottom:1px solid rgba(0,0,0,.12);flex-shrink:0;}
@@ -155,9 +145,12 @@ body { font-family: 'Manrope', sans-serif; background: #f9faf8; color: #191c1b; 
 .word-korean{font-size:clamp(1.1rem,2.8vw,2rem);font-weight:700;color:#3d6428;line-height:1.2;text-align:center;}
 .word-card.play-mode{background:#c6dca8;border-color:#a8cc88;cursor:pointer;}
 .word-card.play-mode:hover{transform:translateY(-3px);box-shadow:0 8px 20px rgba(79,126,53,.25);}
+.word-card.loading{opacity:.6;cursor:wait;}
 .play-icon{font-size:clamp(1.6rem,4vw,2.8rem);display:flex;align-items:center;justify-content:center;user-select:none;}
 .play-icon.playing{animation:pulse .6s ease-in-out infinite alternate;}
+.play-icon.loading-spin{animation:spin 1s linear infinite;}
 @keyframes pulse{from{transform:scale(1);}to{transform:scale(1.18);}}
+@keyframes spin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}
 .btn-play-mode{font-size:.88rem;padding:8px 16px;border-radius:12px;border:2px solid #4f7e35;font-family:inherit;font-weight:700;cursor:pointer;transition:all .18s;white-space:nowrap;}
 .btn-play-mode.off{background:#fff;color:#4f7e35;}
 .btn-play-mode.off:hover{background:#c6dca8;}
@@ -209,14 +202,10 @@ body { font-family: 'Manrope', sans-serif; background: #f9faf8; color: #191c1b; 
       </div>
       <div class="script-grid">
         <button class="script-btn" onclick="selectScript('hiragana')">
-          <span class="kana">あ</span>
-          <span class="lbl">히라가나</span>
-          <span class="sub">HIRAGANA</span>
+          <span class="kana">あ</span><span class="lbl">히라가나</span><span class="sub">HIRAGANA</span>
         </button>
         <button class="script-btn" onclick="selectScript('katakana')">
-          <span class="kana">ア</span>
-          <span class="lbl">가타카나</span>
-          <span class="sub">KATAKANA</span>
+          <span class="kana">ア</span><span class="lbl">가타카나</span><span class="sub">KATAKANA</span>
         </button>
       </div>
       <p style="font-size:.82rem;color:#73796d;">평가 대상 문자를 선택하세요</p>
@@ -421,7 +410,6 @@ const ROWS = {
 
 let ST = {script:"hiragana",selRows:[],counts:{sang:1,jung:2,ha:1},words:[],row1:null,row2:null,selWords:[]};
 
-// ══ [수정 1/3] goScreen: speechSynthesis.cancel() 제거 ══
 function goScreen(id){
   const target=document.getElementById(id);
   if(!target){console.error("goScreen: 화면 없음 →",id);return;}
@@ -429,57 +417,44 @@ function goScreen(id){
   target.classList.add("active");
   window.scrollTo(0,0);
   const sb=document.getElementById('sidebar');
-  if(sb) sb.className = (id==='screen-select'||id==='screen-tool') ? 'screen' : 'screen active';
+  if(sb) sb.className=(id==='screen-select'||id==='screen-tool')?'screen':'screen active';
   ['settings','words','tool'].forEach(k=>{
-    const btn=document.getElementById('nav-'+k);
-    if(!btn)return;
+    const btn=document.getElementById('nav-'+k); if(!btn)return;
     btn.className='nav-btn'+((id==='screen-'+k)||(k==='tool'&&id==='screen-tool')?' active':'');
   });
-  if(id !== 'screen-tool' && isPlayMode){
-    isPlayMode = false;
-    const btn = document.getElementById('play-mode-btn');
-    if(btn){ btn.className='btn-play-mode off'; btn.textContent='🔊 재생 모드'; }
+  if(id!=='screen-tool'&&isPlayMode){
+    isPlayMode=false;
+    const btn=document.getElementById('play-mode-btn');
+    if(btn){btn.className='btn-play-mode off';btn.textContent='🔊 재생 모드';}
   }
 }
 
-function safeGoWords(){
-  if(!zone1Rows.length||!zone2Rows.length) goScreen('screen-settings');
-  else goScreen('screen-words');
-}
+function safeGoWords(){ if(!zone1Rows.length||!zone2Rows.length)goScreen('screen-settings'); else goScreen('screen-words'); }
 
 function selectScript(type){
   ST.script=type; ST.selRows=[];
-  const scriptLabel=type==="hiragana"?"히라가나":"가타카나";
-  const setTxt=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
-  setTxt("settings-lbl",scriptLabel+" 설정");
-  setTxt("tool-title-h1",scriptLabel+" 쓰기");
-  setTxt("q2-text","다음 단어에 해당하는 일본어를 "+scriptLabel+"로 쓰시오.");
-  initZones(type); updateRowInfo(); updateTotal();
-  goScreen('screen-settings');
+  const lbl=type==="hiragana"?"히라가나":"가타카나";
+  const s=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
+  s("settings-lbl",lbl+" 설정"); s("tool-title-h1",lbl+" 쓰기");
+  s("q2-text","다음 단어에 해당하는 일본어를 "+lbl+"로 쓰시오.");
+  initZones(type); updateRowInfo(); updateTotal(); goScreen('screen-settings');
 }
 
 let zone1Rows=[], zone2Rows=[];
-
 function initZones(type){ zone1Rows=[]; zone2Rows=[]; ST.selRows=[]; renderZones(); }
 
 function renderZones(){
   const rows=ROWS[ST.script];
-  const z1=document.getElementById("zone1-pills");
-  const z2=document.getElementById("zone2-pills");
-  const pool=document.getElementById("row-pool");
+  const z1=document.getElementById("zone1-pills"); const z2=document.getElementById("zone2-pills"); const pool=document.getElementById("row-pool");
   if(!z1||!z2||!pool)return;
-  z1.innerHTML=zone1Rows.length ? zone1Rows.map(i=>pillHTML(i,"zone1")).join("") : "<span class='dnd-empty-hint'>여기에 행을 놓으세요</span>";
-  z2.innerHTML=zone2Rows.length ? zone2Rows.map(i=>pillHTML(i,"zone2")).join("") : "<span class='dnd-empty-hint'>여기에 행을 놓으세요</span>";
-  pool.innerHTML=rows.map((_,i)=>{
-    const inZone=zone1Rows.includes(i)||zone2Rows.includes(i);
-    return inZone ? `<span class="dnd-pill in-used">${rows[i].ko}</span>` : pillHTML(i,"pool");
-  }).join("");
+  z1.innerHTML=zone1Rows.length?zone1Rows.map(i=>pillHTML(i,"zone1")).join(""):"<span class='dnd-empty-hint'>여기에 행을 놓으세요</span>";
+  z2.innerHTML=zone2Rows.length?zone2Rows.map(i=>pillHTML(i,"zone2")).join(""):"<span class='dnd-empty-hint'>여기에 행을 놓으세요</span>";
+  pool.innerHTML=rows.map((_,i)=>(zone1Rows.includes(i)||zone2Rows.includes(i))?`<span class="dnd-pill in-used">${rows[i].ko}</span>`:pillHTML(i,"pool")).join("");
   ST.selRows=zone1Rows; updateRowInfo();
 }
 
 function pillHTML(idx,zone){
-  const rows=ROWS[ST.script];
-  const cls=zone==="zone1"?"in-zone1":zone==="zone2"?"in-zone2":"in-pool";
+  const rows=ROWS[ST.script]; const cls=zone==="zone1"?"in-zone1":zone==="zone2"?"in-zone2":"in-pool";
   return `<span class="dnd-pill ${cls}" draggable="true" ondragstart="onPillDragStart(event,${idx},'${zone}')" ondragend="onPillDragEnd(event)">${rows[idx].ko}</span>`;
 }
 
@@ -491,196 +466,111 @@ function onZoneDragLeave(e){ e.currentTarget.classList.remove("drag-over"); }
 function onZoneDrop(e,toZone){
   e.preventDefault(); try{e.currentTarget.classList.remove("drag-over");}catch(err){}
   if(!_dragSrc)return;
-  const{idx,fromZone}=_dragSrc; _dragSrc=null;
-  if(fromZone===toZone)return;
-  if(fromZone==="zone1")zone1Rows=zone1Rows.filter(i=>i!==idx);
-  else if(fromZone==="zone2")zone2Rows=zone2Rows.filter(i=>i!==idx);
-  if(toZone==="zone1")zone1Rows=[...zone1Rows,idx].sort((a,b)=>a-b);
-  else if(toZone==="zone2")zone2Rows=[...zone2Rows,idx].sort((a,b)=>a-b);
+  const{idx,fromZone}=_dragSrc; _dragSrc=null; if(fromZone===toZone)return;
+  if(fromZone==="zone1")zone1Rows=zone1Rows.filter(i=>i!==idx); else if(fromZone==="zone2")zone2Rows=zone2Rows.filter(i=>i!==idx);
+  if(toZone==="zone1")zone1Rows=[...zone1Rows,idx].sort((a,b)=>a-b); else if(toZone==="zone2")zone2Rows=[...zone2Rows,idx].sort((a,b)=>a-b);
   renderZones(); autoSave();
 }
-
 function updateRowInfo(){
   const rows=ROWS[ST.script]; const box=document.getElementById("row-info-box"); if(!box)return;
   const ok1=zone1Rows.length>0, ok2=zone2Rows.length>0;
-  if(ok1&&ok2){
-    box.innerHTML=`<strong style="color:#325c26;">선택1:</strong> ${zone1Rows.map(i=>rows[i].ko).join(", ")} &nbsp;|&nbsp; <strong style="color:#3a5ea8;">선택2:</strong> ${zone2Rows.map(i=>rows[i].ko).join(", ")}`;
-    box.style.cssText="background:#f0f9e8;border-color:#a9dfbf;color:#191c1b;";
-  } else {
-    box.innerHTML="⚠️ 선택 1과 선택 2에 각 1개 이상의 행을 배치해 주세요.";
-    box.style.cssText="background:#fffde7;border-color:#f9e4a0;color:#b45309;";
-  }
+  if(ok1&&ok2){ box.innerHTML=`<strong style="color:#325c26;">선택1:</strong> ${zone1Rows.map(i=>rows[i].ko).join(", ")} &nbsp;|&nbsp; <strong style="color:#3a5ea8;">선택2:</strong> ${zone2Rows.map(i=>rows[i].ko).join(", ")}`; box.style.cssText="background:#f0f9e8;border-color:#a9dfbf;color:#191c1b;"; }
+  else{ box.innerHTML="⚠️ 선택 1과 선택 2에 각 1개 이상의 행을 배치해 주세요."; box.style.cssText="background:#fffde7;border-color:#f9e4a0;color:#b45309;"; }
 }
-
-function changeCount(key,delta){
-  const t=ST.counts.sang+ST.counts.jung+ST.counts.ha;
-  if(delta<0&&t<=1)return;
-  ST.counts[key]=Math.max(0,Math.min(8,ST.counts[key]+delta));
-  document.getElementById("val-"+key).textContent=ST.counts[key];
-  updateTotal(); autoSave();
-}
+function changeCount(key,delta){ const t=ST.counts.sang+ST.counts.jung+ST.counts.ha; if(delta<0&&t<=1)return; ST.counts[key]=Math.max(0,Math.min(8,ST.counts[key]+delta)); document.getElementById("val-"+key).textContent=ST.counts[key]; updateTotal(); autoSave(); }
 function updateTotal(){ document.getElementById("total-count").textContent=ST.counts.sang+ST.counts.jung+ST.counts.ha; }
-
 function goToWords(){
   if(!zone1Rows.length||!zone2Rows.length){alert("각 구역에 행을 1개 이상 배치해 주세요.");return;}
-  ["sang","jung","ha"].forEach(d=>{
-    const el1=document.getElementById("need-"+d); const el2=document.getElementById("kn-"+d);
-    if(el1)el1.textContent=ST.counts[d]; if(el2)el2.textContent=ST.counts[d];
-  });
+  ["sang","jung","ha"].forEach(d=>{ const el1=document.getElementById("need-"+d); const el2=document.getElementById("kn-"+d); if(el1)el1.textContent=ST.counts[d]; if(el2)el2.textContent=ST.counts[d]; });
   renderKanban(); updateStatus(); goScreen("screen-words");
 }
 
 let dragIdx=null;
-
 const JP_TO_KR={};
-Object.entries(VOCAB_DB).forEach(([kr,arr])=>{ arr.forEach(e=>{ if(!JP_TO_KR[e.jp]) JP_TO_KR[e.jp]={kr,d:e.d}; }); });
-
+Object.entries(VOCAB_DB).forEach(([kr,arr])=>{ arr.forEach(e=>{ if(!JP_TO_KR[e.jp])JP_TO_KR[e.jp]={kr,d:e.d}; }); });
 function isJapanese(str){ return /[\u3040-\u309F\u30A0-\u30FF]/.test(str); }
-
 function lookupInput(input){
   const key=input.trim();
-  if(isJapanese(key)){
-    if(JP_TO_KR[key]){ const{kr,d}=JP_TO_KR[key]; return{kr,jp:key,diff:D_MAP[d]||"jung",fromDB:true}; }
-    return{kr:null,jp:key,diff:null,fromDB:false};
-  } else {
-    if(VOCAB_DB[key]){ const e=VOCAB_DB[key][0]; return{kr:key,jp:e.jp,diff:D_MAP[e.d]||"jung",fromDB:true}; }
-    if(key.length>=2){ const pk=Object.keys(VOCAB_DB).find(k=>k.includes(key)); if(pk){ const e=VOCAB_DB[pk][0]; return{kr:pk,jp:e.jp,diff:D_MAP[e.d]||"jung",fromDB:true}; } }
-    return{kr:key,jp:null,diff:null,fromDB:false};
-  }
+  if(isJapanese(key)){ if(JP_TO_KR[key]){ const{kr,d}=JP_TO_KR[key]; return{kr,jp:key,diff:D_MAP[d]||"jung",fromDB:true}; } return{kr:null,jp:key,diff:null,fromDB:false}; }
+  else{ if(VOCAB_DB[key]){ const e=VOCAB_DB[key][0]; return{kr:key,jp:e.jp,diff:D_MAP[e.d]||"jung",fromDB:true}; } if(key.length>=2){ const pk=Object.keys(VOCAB_DB).find(k=>k.includes(key)); if(pk){ const e=VOCAB_DB[pk][0]; return{kr:pk,jp:e.jp,diff:D_MAP[e.d]||"jung",fromDB:true}; } } return{kr:key,jp:null,diff:null,fromDB:false}; }
 }
-
 async function addWord(){
   const inp=document.getElementById("word-input"); const raw=inp.value.trim(); if(!raw)return;
   const inputs=raw.split(/[,，、\s]+/).map(w=>w.trim()).filter(Boolean); inp.value="";
   const btn=document.getElementById("add-btn"); if(btn){btn.disabled=true;btn.textContent="분류 중…";}
   for(const input of inputs){
-    if(!input)continue;
-    const r=lookupInput(input);
+    if(!input)continue; const r=lookupInput(input);
     if(ST.words.find(w=>w.kr===r.kr&&r.kr))continue;
     if(ST.words.find(w=>w.jp===r.jp&&r.jp&&!r.kr))continue;
     if(!r.fromDB&&(r.jp||r.kr)){
-      try{
-        const apiBase=window.location.hostname.includes('vercel.app')?'':'https://japanese-assessment.vercel.app';
-        const res=await fetch(apiBase+'/api/classify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({word:r.jp||r.kr})});
-        const data=await res.json(); if(data.difficulty)r.diff=data.difficulty;
-      }catch(e){console.error('Gemini 분류 실패',e);}
+      try{ const apiBase=window.location.hostname.includes('vercel.app')?'':'https://japanese-assessment.vercel.app'; const res=await fetch(apiBase+'/api/classify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({word:r.jp||r.kr})}); const data=await res.json(); if(data.difficulty)r.diff=data.difficulty; }catch(e){console.error('분류 실패',e);}
     }
     ST.words.push({kr:r.kr,jp:r.jp,diff:r.diff,fromDB:r.fromDB});
   }
   if(btn){btn.disabled=false;btn.textContent="추가";}
   renderKanban(); updateStatus(); autoSave();
 }
-
 function handleXlFile(file){
-  if(!file)return;
-  const reader=new FileReader();
+  if(!file)return; const reader=new FileReader();
   reader.onload=async ev=>{
-    const wb=XLSX.read(ev.target.result,{type:"binary"});
-    const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1});
-    const allWords=[];
+    const wb=XLSX.read(ev.target.result,{type:"binary"}); const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1}); const allWords=[];
     rows.forEach(row=>{ if(!Array.isArray(row))return; row.forEach(val=>{ if(!val)return; const input=String(val).trim(); if(!input||["A","B","C","상","중","하"].includes(input))return; const r=lookupInput(input); if(ST.words.find(w=>w.kr===r.kr&&r.kr))return; allWords.push(r); }); });
     const apiBase2=window.location.hostname.includes('vercel.app')?'':'https://japanese-assessment.vercel.app';
-    for(const r of allWords){
-      if(!r.fromDB&&(r.jp||r.kr)){ try{ const res=await fetch(apiBase2+'/api/classify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({word:r.jp||r.kr})}); const data=await res.json(); if(data.difficulty)r.diff=data.difficulty; }catch(e){} }
-      ST.words.push({kr:r.kr,jp:r.jp,diff:r.diff,fromDB:r.fromDB});
-    }
+    for(const r of allWords){ if(!r.fromDB&&(r.jp||r.kr)){ try{ const res=await fetch(apiBase2+'/api/classify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({word:r.jp||r.kr})}); const data=await res.json(); if(data.difficulty)r.diff=data.difficulty; }catch(e){} } ST.words.push({kr:r.kr,jp:r.jp,diff:r.diff,fromDB:r.fromDB}); }
     renderKanban(); updateStatus(); autoSave();
   };
-  reader.readAsBinaryString(file);
-  const inp=document.getElementById("xl-input"); if(inp)inp.value="";
+  reader.readAsBinaryString(file); const inp=document.getElementById("xl-input"); if(inp)inp.value="";
 }
 function handleXlDrop(e){ e.preventDefault(); const file=e.dataTransfer.files[0]; if(!file)return; if(!/\.(xlsx|xls)$/i.test(file.name)){alert("엑셀 파일만 가능합니다.");return;} handleXlFile(file); }
 function delWord(idx){ ST.words.splice(idx,1); renderKanban(); updateStatus(); autoSave(); }
 function clearWords(){ if(!confirm("모든 단어를 삭제할까요?"))return; ST.words=[]; renderKanban(); updateStatus(); autoSave(); }
-
 function renderKanban(){
   document.getElementById("word-count").textContent=ST.words.length;
   const uz=document.getElementById("upload-zone"); if(uz)uz.classList.toggle("compact",ST.words.length>0);
   const groups={sang:[],jung:[],ha:[],null:[]};
   ST.words.forEach((w,i)=>{ const k=w.diff||"null"; (groups[k]=groups[k]||[]).push({...w,i}); });
-  ["sang","jung","ha"].forEach(d=>{
-    const c=document.getElementById("cards-"+d); const kc=document.getElementById("kc-"+d);
-    if(c) c.innerHTML=groups[d].length ? groups[d].map(w=>cardHTML(w)).join("") : `<div class="kb-empty">여기에 드래그하세요</div>`;
-    if(kc) kc.textContent=groups[d].length;
-  });
+  ["sang","jung","ha"].forEach(d=>{ const c=document.getElementById("cards-"+d); const kc=document.getElementById("kc-"+d); if(c)c.innerHTML=groups[d].length?groups[d].map(w=>cardHTML(w)).join(""):`<div class="kb-empty">여기에 드래그하세요</div>`; if(kc)kc.textContent=groups[d].length; });
   const unList=groups["null"]||[]; const wrap=document.getElementById("unassigned-wrap"); wrap.style.display=unList.length?"block":"none";
   if(unList.length){ document.getElementById("cards-unassigned").innerHTML=unList.map(w=>cardHTML(w)).join(""); document.getElementById("kc-unassigned").textContent=unList.length; }
 }
-
 function cardHTML(w){
   const kr=w.kr||""; const jp=w.jp||""; const label=kr||jp||"?";
-  return `<div class="dcard${!w.diff?" needs":""}" draggable="true" ondragstart="onDragStart(event,${w.i})" ondragend="onDragEnd(event)">
-    <div class="dc-main"><span class="dc-kr">${label}</span>${kr&&jp?`<span class="dc-sep">·</span><span class="dc-jp">${jp}</span>`:""}</div>
-    <div class="dc-right"><span class="dc-db ${w.fromDB?"found":"manual"}">${w.fromDB?"DB":""}</span><button class="dc-del" onclick="delWord(${w.i})">✕</button></div>
-  </div>`;
+  return `<div class="dcard${!w.diff?" needs":""}" draggable="true" ondragstart="onDragStart(event,${w.i})" ondragend="onDragEnd(event)"><div class="dc-main"><span class="dc-kr">${label}</span>${kr&&jp?`<span class="dc-sep">·</span><span class="dc-jp">${jp}</span>`:""}</div><div class="dc-right"><span class="dc-db ${w.fromDB?"found":"manual"}">${w.fromDB?"DB":""}</span><button class="dc-del" onclick="delWord(${w.i})">✕</button></div></div>`;
 }
-
 function onDragStart(e,idx){ dragIdx=idx; setTimeout(()=>e.target.classList.add("dragging"),0); }
 function onDragEnd(e){ e.target.classList.remove("dragging"); document.querySelectorAll(".kb-col").forEach(c=>c.classList.remove("drag-over")); }
 function onDragOver(e,diff){ e.preventDefault(); document.getElementById(diff?"col-"+diff:"col-unassigned").classList.add("drag-over"); }
 function onDragLeave(e){ e.currentTarget.classList.remove("drag-over"); }
 function onDrop(e,diff){ e.preventDefault(); e.currentTarget.classList.remove("drag-over"); if(dragIdx===null)return; ST.words[dragIdx].diff=diff; dragIdx=null; renderKanban(); updateStatus(); autoSave(); }
-
 function updateStatus(){
-  const sang=ST.words.filter(w=>w.diff==="sang").length;
-  const jung=ST.words.filter(w=>w.diff==="jung").length;
-  const ha=ST.words.filter(w=>w.diff==="ha").length;
-  const noDiff=ST.words.filter(w=>!w.diff).length;
-  document.getElementById("st-sang").textContent=sang;
-  document.getElementById("st-jung").textContent=jung;
-  document.getElementById("st-ha").textContent=ha;
-  const warns=[];
-  if(noDiff>0)warns.push(`⚠️ 미설정 ${noDiff}개`);
-  if(sang<ST.counts.sang)warns.push(`🔴 상 부족(${sang}/${ST.counts.sang})`);
-  if(jung<ST.counts.jung)warns.push(`🟠 중 부족(${jung}/${ST.counts.jung})`);
-  if(ha<ST.counts.ha)warns.push(`🟢 하 부족(${ha}/${ST.counts.ha})`);
+  const sang=ST.words.filter(w=>w.diff==="sang").length; const jung=ST.words.filter(w=>w.diff==="jung").length; const ha=ST.words.filter(w=>w.diff==="ha").length; const noDiff=ST.words.filter(w=>!w.diff).length;
+  document.getElementById("st-sang").textContent=sang; document.getElementById("st-jung").textContent=jung; document.getElementById("st-ha").textContent=ha;
+  const warns=[]; if(noDiff>0)warns.push(`⚠️ 미설정 ${noDiff}개`); if(sang<ST.counts.sang)warns.push(`🔴 상 부족`); if(jung<ST.counts.jung)warns.push(`🟠 중 부족`); if(ha<ST.counts.ha)warns.push(`🟢 하 부족`);
   const warnEl=document.getElementById("status-warn"); const guideEl=document.getElementById("status-guide");
-  if(warns.length){warnEl.textContent=warns.join(" · ");warnEl.style.display="";guideEl.style.display="none";}
-  else{warnEl.style.display="none";guideEl.style.display="";}
+  if(warns.length){warnEl.textContent=warns.join(" · ");warnEl.style.display="";guideEl.style.display="none";}else{warnEl.style.display="none";guideEl.style.display="";}
   document.getElementById("tool-btn").disabled=!(!noDiff&&sang>=ST.counts.sang&&jung>=ST.counts.jung&&ha>=ST.counts.ha);
 }
-
-function pick(arr,n){ const a=[...arr],r=[]; while(r.length<n&&a.length){const i=Math.floor(Math.random()*a.length);r.push(a.splice(i,1)[0]);} return r; }
-function shuffle(arr){ const a=[...arr]; for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; }
-
+function pick(arr,n){ const a=[...arr],r=[]; while(r.length<n&&a.length){const i=Math.floor(Math.random()*a.length);r.push(a.splice(i,1)[0]);}return r; }
+function shuffle(arr){ const a=[...arr]; for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a; }
 function buildRandom(){
-  const rows=ROWS[ST.script];
-  const z1=zone1Rows.length?zone1Rows:[0,1,2,3,4];
-  const z2=zone2Rows.length?zone2Rows:[5,6,7,8];
-  ST.row1=rows[z1[Math.floor(Math.random()*z1.length)]%rows.length];
-  ST.row2=rows[z2[Math.floor(Math.random()*z2.length)]%rows.length];
+  const rows=ROWS[ST.script]; const z1=zone1Rows.length?zone1Rows:[0,1,2,3,4]; const z2=zone2Rows.length?zone2Rows:[5,6,7,8];
+  ST.row1=rows[z1[Math.floor(Math.random()*z1.length)]%rows.length]; ST.row2=rows[z2[Math.floor(Math.random()*z2.length)]%rows.length];
   const total=ST.counts.sang+ST.counts.jung+ST.counts.ha;
-  const sangPool=ST.words.filter(w=>w.diff==="sang");
-  const jungPool=ST.words.filter(w=>w.diff==="jung");
-  const haPool=ST.words.filter(w=>w.diff==="ha");
-  const picked=[
-    ...pick(haPool,Math.min(ST.counts.ha,haPool.length)),
-    ...pick(jungPool,Math.min(ST.counts.jung,jungPool.length)),
-    ...pick(sangPool,Math.min(ST.counts.sang,sangPool.length))
-  ];
-  if(picked.length>=total){ ST.selWords=picked; }
-  else if(ST.words.length>0){ const usedKr=new Set(picked.map(w=>w.kr)); const remaining=shuffle(ST.words.filter(w=>!usedKr.has(w.kr))); ST.selWords=shuffle([...picked,...remaining]).slice(0,Math.min(total,ST.words.length)); }
-  else{ ST.selWords=[]; }
+  const sangPool=ST.words.filter(w=>w.diff==="sang"); const jungPool=ST.words.filter(w=>w.diff==="jung"); const haPool=ST.words.filter(w=>w.diff==="ha");
+  const picked=[...pick(haPool,Math.min(ST.counts.ha,haPool.length)),...pick(jungPool,Math.min(ST.counts.jung,jungPool.length)),...pick(sangPool,Math.min(ST.counts.sang,sangPool.length))];
+  if(picked.length>=total){ST.selWords=picked;}else if(ST.words.length>0){const usedKr=new Set(picked.map(w=>w.kr));const remaining=shuffle(ST.words.filter(w=>!usedKr.has(w.kr)));ST.selWords=shuffle([...picked,...remaining]).slice(0,Math.min(total,ST.words.length));}else{ST.selWords=[];}
 }
-
 const WORD_NUMS=['①','②','③','④','⑤','⑥','⑦','⑧'];
-
 function goToTool(){ try{buildRandom();buildTool();}catch(e){console.error("goToTool 에러:",e);} goScreen("screen-tool"); }
 function reGenerate(){ buildRandom(); reveal(); }
-
 function buildTool(){
   document.getElementById("q1-badges-inline").innerHTML=`<span class="row-badge-inline blank">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="row-badge-inline blank">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>`;
   const gridEl=document.getElementById("words-row"); const total=ST.counts.sang+ST.counts.jung+ST.counts.ha;
   gridEl.innerHTML=""; gridEl.className="word-grid";
   if(total<=2)gridEl.classList.add("cols-2"); else if(total===3)gridEl.classList.add("cols-3"); else if(total===4)gridEl.classList.add("cols-4");
-  for(let i=0;i<total;i++){
-    const wrap=document.createElement("div"); wrap.className="word-card-wrap";
-    wrap.innerHTML=`<div class="word-num">${WORD_NUMS[i]||i+1}</div><div class="word-card" id="wc${i}"><div class="word-korean"></div></div>`;
-    gridEl.appendChild(wrap);
-  }
+  for(let i=0;i<total;i++){ const wrap=document.createElement("div"); wrap.className="word-card-wrap"; wrap.innerHTML=`<div class="word-num">${WORD_NUMS[i]||i+1}</div><div class="word-card" id="wc${i}"><div class="word-korean"></div></div>`; gridEl.appendChild(wrap); }
   const btn=document.getElementById("reveal-btn"); btn.textContent="Click Here"; btn.onclick=reveal;
 }
-
 function reveal(){
   if(!ST.row1||!ST.row2){buildRandom();}
   const r1=ST.row1.ko||""; const r2=ST.row2.ko||"";
@@ -689,102 +579,123 @@ function reveal(){
   if(isPlayMode){ refreshWordCards(); }
   else{ ST.selWords.slice(0,total).forEach((w,i)=>{ const el=document.getElementById("wc"+i); if(el)el.querySelector(".word-korean").textContent=w.kr||w.jp||"?"; }); }
   const btn=document.getElementById("reveal-btn"); btn.textContent="🔀 다시 생성"; btn.onclick=reGenerate;
+  // Click Here 시점에 백그라운드 프리로드 시작 (재생 모드 켜기 전에 미리 준비)
+  preloadAllAudio();
 }
 
-let isPlayMode=false;
+// ══ 재생 모드 ══
+let isPlayMode = false;
+const audioCache = {}; // 프리로드 캐시
+
+const API_BASE = (() => {
+  try { return window.location.hostname.includes('vercel.app') ? '' : 'https://japanese-assessment.vercel.app'; } catch(e){ return ''; }
+})();
 
 function togglePlayMode(){
-  isPlayMode=!isPlayMode;
-  const btn=document.getElementById('play-mode-btn');
-  btn.className='btn-play-mode '+(isPlayMode?'on':'off');
-  btn.textContent=isPlayMode?'✕ 재생 모드 끄기':'🔊 재생 모드';
+  isPlayMode = !isPlayMode;
+  const btn = document.getElementById('play-mode-btn');
+  btn.className = 'btn-play-mode ' + (isPlayMode ? 'on' : 'off');
+  btn.textContent = isPlayMode ? '✕ 재생 모드 끄기' : '🔊 재생 모드';
   refreshWordCards();
 }
 
 function refreshWordCards(){
-  const total=ST.counts.sang+ST.counts.jung+ST.counts.ha;
-  ST.selWords.slice(0,total).forEach((w,i)=>{
-    const el=document.getElementById('wc'+i); if(!el)return;
-    if(isPlayMode){ el.className='word-card play-mode'; el.innerHTML=`<div class="play-icon" id="pi${i}">🔊</div>`; el.onclick=()=>speakWord(w.jp||'',i); }
-    else{ el.className='word-card'; el.onclick=null; el.innerHTML=`<div class="word-korean">${w.kr||w.jp||'?'}</div>`; }
+  const total = ST.counts.sang + ST.counts.jung + ST.counts.ha;
+  ST.selWords.slice(0, total).forEach((w, i) => {
+    const el = document.getElementById('wc' + i); if(!el) return;
+    if(isPlayMode){
+      el.className = 'word-card play-mode';
+      el.innerHTML = `<div class="play-icon" id="pi${i}">🔊</div>`;
+      el.onclick = () => speakWord(w.jp || '', i);
+    } else {
+      el.className = 'word-card'; el.onclick = null;
+      el.innerHTML = `<div class="word-korean">${w.kr || w.jp || '?'}</div>`;
+    }
   });
+  // 재생 모드 진입 시 백그라운드에서 모든 단어 음성 미리 생성
+  if(isPlayMode) preloadAllAudio();
 }
 
-// ══ [수정 2/3] speakWord: Web Speech API → Gemini 2.5 Flash TTS ══
+async function preloadAllAudio(){
+  const total = ST.counts.sang + ST.counts.jung + ST.counts.ha;
+  for(const w of ST.selWords.slice(0, total)){
+    const jp = w.jp || '';
+    if(!jp || audioCache[jp]) continue;
+    try {
+      const res = await fetch(API_BASE + '/api/tts', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: jp })
+      });
+      if(res.ok){ const blob = await res.blob(); audioCache[jp] = URL.createObjectURL(blob); }
+    } catch(e){ console.warn('프리로드 실패:', jp); }
+  }
+}
+
+// ── Gemini 2.5 Flash TTS + 프리로드 캐시 + Web Speech 폴백 ──
 async function speakWord(jpText, idx){
   if(!jpText) return;
   const icon = document.getElementById('pi' + idx);
-  if(icon) icon.classList.add('playing');
 
+  const playTwice = (url) => {
+    const a1 = new Audio(url);
+    a1.onended = () => { setTimeout(() => { const a2 = new Audio(url); a2.onended = () => { if(icon)icon.classList.remove('playing'); }; a2.onerror = () => { if(icon)icon.classList.remove('playing'); }; a2.play(); }, 1500); };
+    a1.onerror = () => { if(icon)icon.classList.remove('playing'); };
+    if(icon)icon.classList.add('playing');
+    a1.play();
+  };
+
+  // 1순위: 캐시 즉시 재생
+  if(audioCache[jpText]){ playTwice(audioCache[jpText]); return; }
+
+  // 2순위: Gemini TTS 호출 (tts.js에서 3회 재시도)
   try {
-    const apiBase = window.location.hostname.includes('vercel.app')
-      ? '' : 'https://japanese-assessment.vercel.app';
-
-    const res = await fetch(apiBase + '/api/tts', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    if(icon){ icon.textContent = '⏳'; icon.classList.add('loading-spin'); }
+    const res = await fetch(API_BASE + '/api/tts', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text: jpText })
     });
+    if(icon){ icon.textContent = '🔊'; icon.classList.remove('loading-spin'); }
+    if(res.ok){
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      audioCache[jpText] = url;
+      playTwice(url);
+      return;
+    }
+  } catch(e){ if(icon){ icon.textContent = '🔊'; icon.classList.remove('loading-spin'); } console.warn('Gemini TTS 실패, Web Speech 폴백:', e); }
 
-    if(!res.ok) throw new Error('TTS 오류: ' + res.status);
-
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-
-    // 1회 재생
-    const audio1 = new Audio(url);
-    audio1.onended = () => {
-      // 1.5초 후 2회 재생
-      setTimeout(() => {
-        const audio2 = new Audio(url);
-        audio2.onended = () => {
-          if(icon) icon.classList.remove('playing');
-          URL.revokeObjectURL(url);
-        };
-        audio2.onerror = () => {
-          if(icon) icon.classList.remove('playing');
-          URL.revokeObjectURL(url);
-        };
-        audio2.play();
-      }, 1500);
-    };
-    audio1.onerror = () => {
-      if(icon) icon.classList.remove('playing');
-      URL.revokeObjectURL(url);
-    };
-    audio1.play();
-
-  } catch(e) {
-    console.error('Gemini TTS 실패:', e);
-    if(icon) icon.classList.remove('playing');
-  }
+  // 3순위: Web Speech API 폴백
+  if(icon)icon.classList.add('playing');
+  try {
+    window.speechSynthesis.cancel();
+    const voices = window.speechSynthesis.getVoices();
+    const jpVoice = voices.find(v=>v.lang==='ja-JP'&&v.name.includes('Google')) || voices.find(v=>v.lang==='ja-JP') || voices.find(v=>v.lang.startsWith('ja'));
+    const makeU = () => { const u=new SpeechSynthesisUtterance(jpText); u.lang='ja-JP'; u.rate=0.95; if(jpVoice)u.voice=jpVoice; return u; };
+    const u1=makeU(); u1.onend=()=>{ setTimeout(()=>{ const u2=makeU(); u2.onend=()=>{if(icon)icon.classList.remove('playing');}; u2.onerror=()=>{if(icon)icon.classList.remove('playing');}; window.speechSynthesis.speak(u2); },1500); }; u1.onerror=()=>{if(icon)icon.classList.remove('playing');};
+    window.speechSynthesis.speak(u1);
+  } catch(e){ if(icon)icon.classList.remove('playing'); }
 }
-// ══ [수정 3/3] window.speechSynthesis.onvoiceschanged 제거됨 ══
 
+// ══ 저장/불러오기 ══
 const SAVE_KEY="jpn_tool_save";
-function autoSave(){
-  try{ localStorage.setItem(SAVE_KEY,JSON.stringify({script:ST.script,zone1:zone1Rows,zone2:zone2Rows,counts:ST.counts,words:ST.words,savedAt:new Date().toLocaleString("ko-KR")})); }catch(e){}
-}
+function autoSave(){ try{ localStorage.setItem(SAVE_KEY,JSON.stringify({script:ST.script,zone1:zone1Rows,zone2:zone2Rows,counts:ST.counts,words:ST.words,savedAt:new Date().toLocaleString("ko-KR")})); }catch(e){} }
 function initSaveBanner(){
   try{
     const raw=localStorage.getItem(SAVE_KEY); if(!raw)return;
     const d=JSON.parse(raw); const banner=document.getElementById("save-banner"); const info=document.getElementById("save-info-area");
-    const scriptLabel=d.script==="hiragana"?"히라가나":"가타카나"; const wc=d.words?d.words.length:0;
-    const rows=ROWS[d.script]||ROWS["hiragana"];
-    info.innerHTML=`<div><b>문자:</b> ${scriptLabel}</div><div><b>①행:</b> ${(d.zone1||[]).map(i=>rows[i]?.ko||"").join(", ")} &nbsp;|&nbsp; <b>②행:</b> ${(d.zone2||[]).map(i=>rows[i]?.ko||"").join(", ")}</div><div><b>단어:</b> ${wc}개 &nbsp;상 ${d.counts?.sang||0} / 중 ${d.counts?.jung||0} / 하 ${d.counts?.ha||0}</div><div style="color:#73796d;font-size:.74rem;">💾 ${d.savedAt||""}</div>`;
+    const lbl=d.script==="hiragana"?"히라가나":"가타카나"; const wc=d.words?d.words.length:0; const rows=ROWS[d.script]||ROWS["hiragana"];
+    info.innerHTML=`<div><b>문자:</b> ${lbl}</div><div><b>①행:</b> ${(d.zone1||[]).map(i=>rows[i]?.ko||"").join(", ")} &nbsp;|&nbsp; <b>②행:</b> ${(d.zone2||[]).map(i=>rows[i]?.ko||"").join(", ")}</div><div><b>단어:</b> ${wc}개 &nbsp;상 ${d.counts?.sang||0} / 중 ${d.counts?.jung||0} / 하 ${d.counts?.ha||0}</div><div style="color:#73796d;font-size:.74rem;">💾 ${d.savedAt||""}</div>`;
     banner.style.display="block";
   }catch(e){}
 }
 function loadSavedState(){
   try{
     const raw=localStorage.getItem(SAVE_KEY); if(!raw)return;
-    const d=JSON.parse(raw);
-    ST.script=d.script||"hiragana"; zone1Rows=d.zone1||[]; zone2Rows=d.zone2||[]; ST.counts=d.counts||{sang:1,jung:2,ha:1}; ST.words=d.words||[];
-    const scriptLabel=ST.script==="hiragana"?"히라가나":"가타카나";
-    const setTxt2=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
-    setTxt2("settings-lbl",scriptLabel+" 설정"); setTxt2("tool-title-h1",scriptLabel+" 쓰기");
-    setTxt2("q2-text","다음 단어에 해당하는 일본어를 "+scriptLabel+"로 쓰시오.");
-    document.getElementById("q1-instruction").innerHTML=scriptLabel+' <span id="q1-badges-inline"></span> 에 해당하는 글자를 쓰시오.';
+    const d=JSON.parse(raw); ST.script=d.script||"hiragana"; zone1Rows=d.zone1||[]; zone2Rows=d.zone2||[]; ST.counts=d.counts||{sang:1,jung:2,ha:1}; ST.words=d.words||[];
+    const lbl=ST.script==="hiragana"?"히라가나":"가타카나";
+    const s2=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
+    s2("settings-lbl",lbl+" 설정"); s2("tool-title-h1",lbl+" 쓰기"); s2("q2-text","다음 단어에 해당하는 일본어를 "+lbl+"로 쓰시오.");
+    document.getElementById("q1-instruction").innerHTML=lbl+' <span id="q1-badges-inline"></span> 에 해당하는 글자를 쓰시오.';
     ["sang","jung","ha"].forEach(key=>{ document.getElementById("val-"+key).textContent=ST.counts[key]; document.getElementById("need-"+key).textContent=ST.counts[key]; document.getElementById("kn-"+key).textContent=ST.counts[key]; });
     updateTotal(); renderZones(); renderKanban(); updateStatus(); goToTool();
   }catch(e){alert("저장된 데이터를 불러오는 데 실패했어요.");}
@@ -792,6 +703,8 @@ function loadSavedState(){
 function clearSavedState(){ if(!confirm("저장된 설정을 삭제할까요?"))return; localStorage.removeItem(SAVE_KEY); document.getElementById("save-banner").style.display="none"; }
 
 window.addEventListener("DOMContentLoaded", initSaveBanner);
+// Web Speech 음성 목록 미리 로드
+if('speechSynthesis' in window) window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
 </script>
 </body>
 </html>
