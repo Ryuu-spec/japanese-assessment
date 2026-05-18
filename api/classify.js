@@ -25,7 +25,7 @@ JSON만 반환: {"difficulty":"ha","jp":"히라가나"} 형식으로`;
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0, maxOutputTokens: 100 }
+          generationConfig: { temperature: 0, maxOutputTokens: 500, thinkingConfig: { thinkingBudget: 0 } }
         })
       }
     );
