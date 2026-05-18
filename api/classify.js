@@ -9,13 +9,13 @@ export default async function handler(req, res) {
   if (!word) return res.status(400).json({ error: 'word is required' });
 
   const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return res.status(200).json({ word, difficulty: 'jung' });
+  if (!apiKey) return res.status(200).json({ word, difficulty: 'jung', jp: '' });
 
-  const prompt = `단어 "${word}"의 일본어 음운 난이도를 분류하세요.
+  const prompt = `단어 "${word}"를 일본어로 변환하고 음운 난이도를 분류하세요.
 ha: 2모라 이하 또는 특수음 없는 3모라
 sang: 5모라 이상+특수음 또는 4모라+특수음 2개이상
 jung: 나머지
-{"difficulty":"ha"} 또는 {"difficulty":"jung"} 또는 {"difficulty":"sang"} 중 하나만 반환하세요.`;
+JSON만 반환: {"difficulty":"ha","jp":"히라가나"} 형식으로`;
 
   try {
     const response = await fetch(
@@ -25,31 +25,35 @@ jung: 나머지
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0, maxOutputTokens: 50 }
+          generationConfig: { temperature: 0, maxOutputTokens: 100 }
         })
       }
     );
 
     const data = await response.json();
-    console.log('Gemini raw:', JSON.stringify(data).slice(0, 200));
+    console.log('Gemini raw:', JSON.stringify(data).slice(0, 300));
 
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
     const clean = text.replace(/```json|```/g, '').trim();
 
     let difficulty = 'jung';
+    let jp = '';
+
     try {
       const parsed = JSON.parse(clean);
       if (['ha', 'jung', 'sang'].includes(parsed.difficulty)) {
         difficulty = parsed.difficulty;
       }
+      if (parsed.jp) jp = parsed.jp;
     } catch {
       if (clean.includes('"ha"')) difficulty = 'ha';
       else if (clean.includes('"sang"')) difficulty = 'sang';
     }
 
-    return res.status(200).json({ word, difficulty });
+    return res.status(200).json({ word, difficulty, jp });
+
   } catch (error) {
     console.error('error:', error.message);
-    return res.status(200).json({ word, difficulty: 'jung' });
+    return res.status(200).json({ word, difficulty: 'jung', jp: '' });
   }
 }
