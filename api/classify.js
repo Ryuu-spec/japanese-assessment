@@ -15,7 +15,7 @@ export default async function handler(req, res) {
 ha: 2모라 이하 또는 특수음 없는 3모라
 sang: 5모라 이상+특수음 또는 4모라+특수음 2개이상
 jung: 나머지
-JSON만 반환: {"difficulty":"ha","jp":"히라가나"} 형식으로`;
+JSON만 반환: {"difficulty":"ha","jp":"표기"} 형식으로. 일본어 고유어는 히라가나, 외래어는 가타카나로 표기.`;
 
   try {
     const response = await fetch(
