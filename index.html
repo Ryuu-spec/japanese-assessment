@@ -494,6 +494,8 @@ function lookupInput(input){
   if(isJapanese(key)){ if(JP_TO_KR[key]){ const{kr,d}=JP_TO_KR[key]; return{kr,jp:key,diff:D_MAP[d]||"jung",fromDB:true}; } return{kr:null,jp:key,diff:null,fromDB:false}; }
   else{ if(VOCAB_DB[key]){ const e=VOCAB_DB[key][0]; return{kr:key,jp:e.jp,diff:D_MAP[e.d]||"jung",fromDB:true}; } if(key.length>=2){ const pk=Object.keys(VOCAB_DB).find(k=>k.includes(key)); if(pk){ const e=VOCAB_DB[pk][0]; return{kr:pk,jp:e.jp,diff:D_MAP[e.d]||"jung",fromDB:true}; } } return{kr:key,jp:null,diff:null,fromDB:false}; }
 }
+
+// ══ [수정] addWord: Gemini 반환값 jp도 저장 ══
 async function addWord(){
   const inp=document.getElementById("word-input"); const raw=inp.value.trim(); if(!raw)return;
   const inputs=raw.split(/[,，、\s]+/).map(w=>w.trim()).filter(Boolean); inp.value="";
@@ -503,24 +505,43 @@ async function addWord(){
     if(ST.words.find(w=>w.kr===r.kr&&r.kr))continue;
     if(ST.words.find(w=>w.jp===r.jp&&r.jp&&!r.kr))continue;
     if(!r.fromDB&&(r.jp||r.kr)){
-      try{ const apiBase=window.location.hostname.includes('vercel.app')?'':'https://japanese-assessment.vercel.app'; const res=await fetch(apiBase+'/api/classify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({word:r.jp||r.kr})}); const data=await res.json(); if(data.difficulty)r.diff=data.difficulty; }catch(e){console.error('분류 실패',e);}
+      try{
+        const apiBase=window.location.hostname.includes('vercel.app')?'':'https://japanese-assessment.vercel.app';
+        const res=await fetch(apiBase+'/api/classify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({word:r.jp||r.kr})});
+        const data=await res.json();
+        if(data.difficulty) r.diff=data.difficulty;
+        if(data.jp) r.jp=data.jp; // ← 수정: Gemini 히라가나 저장
+      }catch(e){console.error('분류 실패',e);}
     }
     ST.words.push({kr:r.kr,jp:r.jp,diff:r.diff,fromDB:r.fromDB});
   }
   if(btn){btn.disabled=false;btn.textContent="추가";}
   renderKanban(); updateStatus(); autoSave();
 }
+
+// ══ [수정] handleXlFile: Gemini 반환값 jp도 저장 ══
 function handleXlFile(file){
   if(!file)return; const reader=new FileReader();
   reader.onload=async ev=>{
     const wb=XLSX.read(ev.target.result,{type:"binary"}); const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1}); const allWords=[];
     rows.forEach(row=>{ if(!Array.isArray(row))return; row.forEach(val=>{ if(!val)return; const input=String(val).trim(); if(!input||["A","B","C","상","중","하"].includes(input))return; const r=lookupInput(input); if(ST.words.find(w=>w.kr===r.kr&&r.kr))return; allWords.push(r); }); });
     const apiBase2=window.location.hostname.includes('vercel.app')?'':'https://japanese-assessment.vercel.app';
-    for(const r of allWords){ if(!r.fromDB&&(r.jp||r.kr)){ try{ const res=await fetch(apiBase2+'/api/classify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({word:r.jp||r.kr})}); const data=await res.json(); if(data.difficulty)r.diff=data.difficulty; }catch(e){} } ST.words.push({kr:r.kr,jp:r.jp,diff:r.diff,fromDB:r.fromDB}); }
+    for(const r of allWords){
+      if(!r.fromDB&&(r.jp||r.kr)){
+        try{
+          const res=await fetch(apiBase2+'/api/classify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({word:r.jp||r.kr})});
+          const data=await res.json();
+          if(data.difficulty) r.diff=data.difficulty;
+          if(data.jp) r.jp=data.jp; // ← 수정: Gemini 히라가나 저장
+        }catch(e){}
+      }
+      ST.words.push({kr:r.kr,jp:r.jp,diff:r.diff,fromDB:r.fromDB});
+    }
     renderKanban(); updateStatus(); autoSave();
   };
   reader.readAsBinaryString(file); const inp=document.getElementById("xl-input"); if(inp)inp.value="";
 }
+
 function handleXlDrop(e){ e.preventDefault(); const file=e.dataTransfer.files[0]; if(!file)return; if(!/\.(xlsx|xls)$/i.test(file.name)){alert("엑셀 파일만 가능합니다.");return;} handleXlFile(file); }
 function delWord(idx){ ST.words.splice(idx,1); renderKanban(); updateStatus(); autoSave(); }
 function clearWords(){ if(!confirm("모든 단어를 삭제할까요?"))return; ST.words=[]; renderKanban(); updateStatus(); autoSave(); }
@@ -579,13 +600,12 @@ function reveal(){
   if(isPlayMode){ refreshWordCards(); }
   else{ ST.selWords.slice(0,total).forEach((w,i)=>{ const el=document.getElementById("wc"+i); if(el)el.querySelector(".word-korean").textContent=w.kr||w.jp||"?"; }); }
   const btn=document.getElementById("reveal-btn"); btn.textContent="🔀 다시 생성"; btn.onclick=reGenerate;
-  // Click Here 시점에 백그라운드 프리로드 시작 (재생 모드 켜기 전에 미리 준비)
   preloadAllAudio();
 }
 
 // ══ 재생 모드 ══
 let isPlayMode = false;
-const audioCache = {}; // 프리로드 캐시
+const audioCache = {};
 
 const API_BASE = (() => {
   try { return window.location.hostname.includes('vercel.app') ? '' : 'https://japanese-assessment.vercel.app'; } catch(e){ return ''; }
@@ -612,7 +632,6 @@ function refreshWordCards(){
       el.innerHTML = `<div class="word-korean">${w.kr || w.jp || '?'}</div>`;
     }
   });
-  // 재생 모드 진입 시 백그라운드에서 모든 단어 음성 미리 생성
   if(isPlayMode) preloadAllAudio();
 }
 
@@ -644,10 +663,8 @@ async function speakWord(jpText, idx){
     a1.play();
   };
 
-  // 1순위: 캐시 즉시 재생
   if(audioCache[jpText]){ playTwice(audioCache[jpText]); return; }
 
-  // 2순위: Gemini TTS 호출 (tts.js에서 3회 재시도)
   try {
     if(icon){ icon.textContent = '⏳'; icon.classList.add('loading-spin'); }
     const res = await fetch(API_BASE + '/api/tts', {
@@ -664,7 +681,6 @@ async function speakWord(jpText, idx){
     }
   } catch(e){ if(icon){ icon.textContent = '🔊'; icon.classList.remove('loading-spin'); } console.warn('Gemini TTS 실패, Web Speech 폴백:', e); }
 
-  // 3순위: Web Speech API 폴백
   if(icon)icon.classList.add('playing');
   try {
     window.speechSynthesis.cancel();
@@ -703,7 +719,6 @@ function loadSavedState(){
 function clearSavedState(){ if(!confirm("저장된 설정을 삭제할까요?"))return; localStorage.removeItem(SAVE_KEY); document.getElementById("save-banner").style.display="none"; }
 
 window.addEventListener("DOMContentLoaded", initSaveBanner);
-// Web Speech 음성 목록 미리 로드
 if('speechSynthesis' in window) window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
 </script>
 </body>
