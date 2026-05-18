@@ -16,8 +16,7 @@ ha: 2모라 이하 또는 특수음 없는 3모라
 sang: 5모라 이상+특수음 또는 4모라+특수음 2개이상
 jung: 나머지
 예시: さば→ha, でんわ→jung, びょういん→sang
-JSON만 반환: {"difficulty":"ha","jp":"표기"} 형식으로. 일본어 고유어는 히라가나, 외래어는 가타카나로 표기.`;
-
+JSON만 반환: {"difficulty":"ha","jp":"표기"} 형식으로. 한자 사용 금지. 일본어 고유어는 히라가나, 외래어는 가타카나로만 표기.`;
   try {
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
